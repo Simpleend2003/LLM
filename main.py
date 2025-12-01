@@ -8,9 +8,11 @@ from mitre.rag_retriever import RAGRetriever
 from llm.ttp_extractor import TTPExtractor
 from evaluator.metrics import calculate_coverage
 import os
+
 # 设置代理（保留不变）
 os.environ['HTTP_PROXY'] = "127.0.0.1:7890"
 os.environ['HTTPS_PROXY'] = "127.0.0.1:7890"
+
 
 def parse_ttp_list(s):
     if pd.isna(s) or not s:
@@ -27,18 +29,22 @@ def main():
     print(3)
     extractor = TTPExtractor(retriever)
 
-    df = pd.read_csv("data/test_tram.csv")
+    df = pd.read_csv("data/wrongtext.csv")
     results = []
-
+    full = 0
+    semi = 0
+    all = 0
     for idx, row in df.iterrows():
-        print(f"Processing {idx+1}/{len(df)}")
+        print(f"Processing {idx + 1}/{len(df)}")
 
         text = row["text1"]
         labels = parse_ttp_list(row["labels"])
 
         check, thinking, related = extractor.extract(text)
         coverage = calculate_coverage(labels, check)
-
+        full += coverage['full_coverage']
+        semi += coverage['semi_coverage']
+        all += (coverage['full_coverage']+coverage['semi_coverage']+coverage['false_positive'])
         results.append({
             "text1": text,
             "labels": labels,
@@ -55,9 +61,9 @@ def main():
         })
 
         time.sleep(0.5)
-
+    print((full+semi)/all)
     out_df = pd.DataFrame(results)
-    out_df.to_csv("output_tram.csv", index=False, encoding="utf-8-sig")
+    out_df.to_csv("output1.csv", index=False, encoding="utf-8-sig")
     print("Done! Saved output.csv")
 
 

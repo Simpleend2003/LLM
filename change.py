@@ -1,23 +1,90 @@
-import csv
+# clean_mitre_dataset_plus.py
+# 一键清洗 + 每种 TTP 只保留一行
 
+import pandas as pd
+import re
+import random
 
-def tsv_to_csv(tsv_file, csv_file):
-    # 打开 TSV 文件
-    with open(tsv_file, 'r', newline='', encoding='utf-8') as tsv_f:
-        # 使用 csv.reader 读取 TSV，指定 delimiter 为 '\t'
-        tsv_reader = csv.reader(tsv_f, delimiter='\t')
+def clean_question(text):
+    """去掉 Please help to identify... 前缀"""
+    if pd.isna(text):
+        return ""
+    prefixes = [
+        r"Please help to identify the following description belonging to which technique in MITRE and the corresponding tactics[:\s]*",
+        r"Please help to identify the following description belonging to which technique in MITRE and the corresponding tactics\s*[:\.]*",
+    ]
+    cleaned = str(text)
+    for p in prefixes:
+        cleaned = re.sub(p, "", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip()
 
-        # 打开 CSV 文件进行写入
-        with open(csv_file, 'w', newline='', encoding='utf-8') as csv_f:
-            csv_writer = csv.writer(csv_f)
+def extract_techniques(answer):
+    """提取所有 Txxxx 或 Txxxx.xxx"""
+    if pd.isna(answer):
+        return []
+    matches = re.findall(r'T\d{4}(?:\.\d{3})?', str(answer))
+    # 去重但保持原始顺序
+    seen = set()
+    unique = []
+    for m in matches:
+        if m not in seen:
+            seen.add(m)
+            unique.append(m)
+    return unique
 
-            # 将 TSV 内容写入 CSV
-            for row in tsv_reader:
-                csv_writer.writerow(row)
+# ==================== 主程序 ====================
+input_csv = "cyber_MITRE_CTI_dataset .csv"        # 改成你的原始文件名
+full_output = "data/cleaned_full.csv"
+one_per_ttp_output = "data/one_per_ttp.csv"
 
-    print(f"转换完成！{tsv_file} 已转换为 {csv_file}")
+print("正在读取数据...")
+df = pd.read_csv(input_csv)
 
+print("正在清洗 question...")
+df['question'] = df['question'].apply(clean_question)
 
+print("正在提取 TTP...")
+df['answer'] = df['answer'].apply(extract_techniques)
 
-# 调用函数，提供输入 TSV 文件和输出 CSV 文件的路径
-tsv_to_csv('data/tram_train.tsv', 'data/tram_train.csv')
+# 保存完整清洗版
+df[['question', 'answer']].to_csv(full_output, index=False)
+print(f"完整清洗版已保存：{full_output}，共 {len(df)} 条")
+
+# ==================== 每种 TTP 只保留一行 ====================
+print("正在生成 every TTP only one sample...")
+ttp_to_rows = {}
+
+for idx, row in df.iterrows():
+    question = row['question']
+    techniques = row['answer']
+    if not techniques:
+        continue
+    # 把多个 TTP 的都算进去
+    for ttp in techniques:
+        if ttp not in ttp_to_rows:
+            ttp_to_rows[ttp] = []
+        ttp_to_rows[ttp].append({
+            'question': question,
+            'answer': [ttp]  # 只保留当前这个 TTP
+        })
+
+# 每种 TTP 随机挑一条（或第一条）
+selected_rows = []
+for ttp, rows in ttp_to_rows.items():
+    chosen = random.choice(rows)  # 随机挑，公平
+    # 也可以用 rows[0] 取第一条
+    selected_rows.append({
+        'question': chosen['question'],
+        'answer': str(chosen['answer'])  # 存成字符串 ['Txxxx']
+    })
+
+one_per_df = pd.DataFrame(selected_rows)
+one_per_df = one_per_df[['question', 'answer']]
+one_per_df.to_csv(one_per_ttp_output, index=False)
+
+print(f"每种 TTP 只保留一行 已保存：{one_per_ttp_output}")
+print(f"共 {len(one_per_df)} 种唯一 TTP")
+
+print("\n全部完成！")
+print("   - 完整数据集 → cleaned_full.csv")
+print("   - 每种 TTP 一条 → one_per_ttp.csv")

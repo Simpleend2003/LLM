@@ -2,7 +2,7 @@
 
 import json
 from .llm_client import LLMClient
-from .prompts import behavior_extraction_prompt, ttp_mapping_prompt
+from .prompts import ttp_mapping_cot_prompt
 from mitre.rag_retriever import RAGRetriever
 
 
@@ -13,57 +13,61 @@ class TTPExtractor:
         self.llm = LLMClient()
 
     def extract(self, text: str):
-        # Step 1: retrieve TTP candidates
-        candidates = self.retriever.retrieve(text)
+        # Step 1: Retrieve - 增加 Top K 到 10，防止漏召回
+        # 注意：这需要 config.py 中的 TOP_K_RERANK 至少为 10，否则这里取不到 10 个
+        candidates_raw = self.retriever.retrieve(text)[:10]
 
-        # Step 2: extract behaviors
-        beh_prompt = behavior_extraction_prompt(text)
-        response = self.llm.ask(beh_prompt)
-        print("API Response:", response)  # 打印响应内容以调试
+        # Step 2: Format with Ranking
+        candidates_str = ""
+        for i, c in enumerate(candidates_raw):
+            rank = i + 1
+            candidates_str += f"--- [Rank {rank}] ---\n"
+            candidates_str += f"ID: {c['technique_id']}\n"
+            candidates_str += f"Name: {c['name']}\n"
+            # 描述保持压缩，防止 10 个候选项撑爆 Prompt 上下文
+            desc = c['description'][:150].replace("\n", " ") + "..."
+            candidates_str += f"Description: {desc}\n\n"
 
-        if response:
-            beh_json = json.loads(response)
-        else:
-            print("Received empty response from API.")
-
-        # Step 3: mapping TTPs
-        map_prompt = ttp_mapping_prompt(
+        # Step 3: Call LLM
+        map_prompt = ttp_mapping_cot_prompt(
             text=text,
-            behaviors=json.dumps(beh_json["behaviors"], ensure_ascii=False),
-            candidates=json.dumps(candidates, ensure_ascii=False)
+            candidates=candidates_str
         )
+
         response = self.llm.ask(map_prompt)
 
-        mapping = {"techniques": [], "thinking": []}  # 默认值，防止解析失败
-        response = response.replace(r"\\", "/")  # 如果有 \' 这种转义字符，也可以替换成 '
-        response = response.replace(r"\'", "'")  # 如果有 \' 这种转义字符，也可以替换成 '
-
-        response = response.replace(r'\"', '"')  # 如果有 \"，也可以替换成 "
+        # --- JSON 清洗与解析 ---
+        mapping = {"prediction": [], "analysis": ""}
         try:
+            cleaned_response = response.strip()
 
+            # 清理 Markdown 代码块
+            if cleaned_response.startswith("```json"):
+                cleaned_response = cleaned_response[7:].strip()
+            if cleaned_response.startswith("```"):
+                cleaned_response = cleaned_response[3:].strip()
+            if cleaned_response.endswith("```"):
+                cleaned_response = cleaned_response[:-3].strip()
 
-            # 2. 修复最常见的转义问题：将单个反斜杠 (如路径C:\user) 替换为双反斜杠 (C:\\user)
-            # 这样 Python 的 json.loads 才能正确处理。
-            # 注意：如果 LLM 输出的 JSON 字符串值中包含路径，会产生这个问题。
-            # 我们必须在最外层替换，防止误伤已正确转义的字符。
-            # 警告：简单的全局替换可能会过度转义，但在 LLM 场景下，这通常是解决问题的最快方法。
-            cleaned_response = response.replace('\\', '\\\\')
+            # 强化清洗
+            cleaned_response = cleaned_response.replace('\n', ' ').replace('\r', ' ')
+            cleaned_response = cleaned_response.replace('\\', '\\\\')
 
-            # 3. 修复替换过程中可能产生的过度转义（可选，但更安全）
-            # 如果 LLM 已经输出了 \\，我们不希望它变成 \\\\。
-            # 由于前面的 simple replace 已经进行，我们假设它解决了问题。
+            data = json.loads(cleaned_response)
 
-            print("API Response (Cleaned):", cleaned_response)
+            # 确保 prediction 字段是列表
+            mapping["prediction"] = data.get("prediction", [])
+            if not isinstance(mapping["prediction"], list):
+                mapping["prediction"] = [mapping["prediction"]]
 
-            # 4. JSON 解析 (修正: 使用 cleaned_response 变量)
-            mapping = json.loads(cleaned_response)
+            mapping["analysis"] = data.get("analysis", "No analysis")
 
-        except json.JSONDecodeError as e:
-            print(f"【致命错误】JSON解析失败。请检查原始响应。错误: {e}")
-            print(f"原始响应（Raw Response）: {response}")
-            # 如果解析失败，则返回默认的空列表
         except Exception as e:
-            print(f"发生未知错误: {e}")
+            print(f"【JSON解析失败】: {e}")
+            print(f"原始响应: {response[:200]}...")
+            # 兜底策略：如果解析失败，尝试直接使用 Rank 1 的结果
+            if candidates_raw:
+                print("Using Rank 1 candidate as fallback.")
+                mapping["prediction"] = [candidates_raw[0]['technique_id']]
 
-        # 返回解析结果或默认的空列表
-        return mapping.get("prediction", []), mapping.get("thinking", []), candidates
+        return mapping["prediction"], [mapping["analysis"]], candidates_raw

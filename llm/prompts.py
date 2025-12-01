@@ -1,102 +1,30 @@
-# llm/prompts.py
-def behavior_extraction_prompt(text: str):
+# llm/prompts.py —— 终极收敛版（关注开发）
+def ttp_mapping_cot_prompt(text: str, candidates: str):
     return f"""
-You are a cyber threat intelligence analyst.
+You are the world's most rigorous MITRE ATT&CK analyst (v15.1). Accuracy is everything.
 
-Extract the atomic attacker behaviors from the text. 
-NO MITRE IDs. Only behaviors.
+Input Text: "{text}"
 
-Return JSON ONLY:
-
-{{
-  "behaviors": ["...", "..."]
-}}
-ONLY output valid JSON.
-NO markdown code block.
-NO explanation.
-
-Text:
-{text}
-"""
-
-
-def ttp_mapping_prompt1(text: str, behaviors, candidates):
-    return f"""
-You are a senior MITRE ATT&CK analyst.
-
-For EACH behavior, evaluate ALL candidate techniques.
-For each candidate, provide a relevance score from 0 to 1.
-
-Rules:
-- You MUST only select techniques from the candidate list.
-- Score meaning:
-  1.0 = exact match
-  0.7 = partial match
-  0.3 = weak match
-  0.0 = unrelated
-- After scoring, choose the technique with the highest score.
--
-
-Output JSON ONLY:
-
-{{
-  "thinking": [
-    "Behavior X → score table … → best choice",
-    ...
-  ],
-  "techniques": ["Txxxx", "Txxxx"]
-  
-}}
-
-Behaviors:
-{behaviors}
-
-Candidates:
+Candidate Techniques (ranked, but often miss the real one):
 {candidates}
 
-Text:
-{text}
-ONLY output valid JSON.
-NO markdown code block.
-NO explanation.
-"""
-def ttp_mapping_prompt(text: str, behaviors, candidates):
-    return f"""
-You are a senior MITRE ATT&CK analyst.
+RULES YOU MUST OBEY:
+1. **PRIORITY RULE (Resource Development):** If the text clearly describes actions related to **the creation, building, modification (e.g., fixing, introducing new features), or unique status** (e.g., "custom," "unique to APT," "compiled in") of a resource/malware, you **MUST** prioritize the Resource Development tactic (e.g., T1587, T1588). Do not be distracted by the resource's *effect* (like Execution or Impact) if the text focuses on its *creation*. If the text explicitly states the use of **"off-the-shelf"** or **"ready-made"** tools, **T1587 must be excluded.**
+2. If none of the candidates correctly describe the behavior → YOU MUST go outside the list and output the real technique.
+   Never force-fit to a wrong candidate.
 
-For EACH behavior, evaluate ALL candidate techniques and provide the final prediction.
-If multiple behaviors together indicate a single combined TTP, you must also consider that.
+3. Output multiple techniques only when the text clearly shows multiple distinct behaviors.
+   Maximum 4. Never output just because "it might be".
 
-Rules:
-- You MAY reference candidates, but you are NOT restricted to them..
-- Score meaning:
-  1.0 = exact match
-  0.7 = partial match
-  0.3 = weak match
-  0.0 = unrelated
-- After scoring all candidate techniques for a behavior, base the techniques with the score to find final predictions.
-- Provide the reasoning for the selected predictions.
+4. **NEVER** output fake or non-existent IDs (e.g. T1544, T1219, T1544, T086x, T16xx that don't exist).
 
-Output JSON ONLY:
+5. Sub-technique only if explicitly mentioned (e.g. "port 443" → T1071.001 OK, "HTTPS" → T1071 only).
 
+6. When in doubt → output fewer, not more.
+
+Output strict JSON only:
 {{
-  "thinking": [
-    "For behavior X , based on the analysis of all candidates, the best matching technique is Txxxx with score Y. Reasoning: ...",
-    ...
-  ],
-   "techniques": ["Txxxx", "Txxxx"]
-  "prediction": ["Txxxx"]
+  "analysis": "2-3 sentences max: what behavior, which tactic, why these IDs",
+  "prediction": ["T1071.001", "T1105"]
 }}
-
-Behaviors:
-{behaviors}
-
-Candidates:
-{candidates}
-
-Text:
-{text}
-ONLY output valid JSON.
-NO markdown code block.
-NO explanation.
 """

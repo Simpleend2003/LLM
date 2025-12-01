@@ -18,7 +18,7 @@ def calculate_coverage(labels, check):
             semi += 1
 
     no = len(labels_set - check_set) - semi
-    fp = len(check_set - labels_set)
+    fp = len(check_set - labels_set) - semi
 
     return {
         "full_coverage": full,
