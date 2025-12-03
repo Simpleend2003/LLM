@@ -1,30 +1,41 @@
-# llm/prompts.py —— 终极收敛版（关注开发）
+# llm/prompts.py
+
 def ttp_mapping_cot_prompt(text: str, candidates: str):
     return f"""
-You are the world's most rigorous MITRE ATT&CK analyst (v15.1). Accuracy is everything.
+You are a strict MITRE ATT&CK Classification System. 
+Your ONLY task is to select the most accurate technique ID from the provided "Candidate Techniques" list that matches the Input Text.
 
 Input Text: "{text}"
 
-Candidate Techniques (ranked, but often miss the real one):
+Candidate Techniques (The ONLY allowed options):
 {candidates}
 
-RULES YOU MUST OBEY:
-1. **PRIORITY RULE (Resource Development):** If the text clearly describes actions related to **the creation, building, modification (e.g., fixing, introducing new features), or unique status** (e.g., "custom," "unique to APT," "compiled in") of a resource/malware, you **MUST** prioritize the Resource Development tactic (e.g., T1587, T1588). Do not be distracted by the resource's *effect* (like Execution or Impact) if the text focuses on its *creation*. If the text explicitly states the use of **"off-the-shelf"** or **"ready-made"** tools, **T1587 must be excluded.**
-2. If none of the candidates correctly describe the behavior → YOU MUST go outside the list and output the real technique.
-   Never force-fit to a wrong candidate.
+### CRITICAL RULES (STRICT COMPLIANCE REQUIRED):
 
-3. Output multiple techniques only when the text clearly shows multiple distinct behaviors.
-   Maximum 4. Never output just because "it might be".
+1. **ANTI-HALLUCINATION POLICY (MOST IMPORTANT):**
+   - NEVER output a Technique ID that is not present in the "Candidate Techniques" list.
+   - If no candidate matches the input text, output the Technique IDs you think are right but not in the candidates.
 
-4. **NEVER** output fake or non-existent IDs (e.g. T1544, T1219, T1544, T086x, T16xx that don't exist).
+2. **TACTIC CONTEXT CHECK :**
+   - Always analyze the intent (Preparation vs. Usage) before selecting. Ensure the Tactic aligns with the action described in the Input Text.
 
-5. Sub-technique only if explicitly mentioned (e.g. "port 443" → T1071.001 OK, "HTTPS" → T1071 only).
+3. **PRECISION AND FALLBACK :**
+   - **PRIORITIZE** the most specific sub-technique (e.g., T1070.004 for "file deletion") if it is explicitly available in the candidate list.
+   - **CRITICAL FALLBACK:** If the input text clearly matches the *general definition* of a Parent Technique (e.g., T1070 for "Artifact Cleanup") AND the specific Sub-Technique (T1070.004) is NOT present in the list, **YOU MUST select the Parent Technique (T1070)**.
+   - **Do not return [] if a clear Parent Technique match is available.**
 
-6. When in doubt → output fewer, not more.
+4. **MECHANISM OVER GOAL :**
+   - Prioritize the technique describing the **ACTIVE MECHANISM/ACTION** used (e.g., `created volume shadow copies` → **T1006**) over the final goal.
 
-Output strict JSON only:
+5. **MULTI-TECHNIQUE LIMIT:** Output multiple techniques only when the text clearly shows multiple distinct, sequential behaviors. Maximum 4.
+
+6. **OUTPUT FORMAT:**
+   - Provide a brief analysis justifying your choice based on the text evidence and the selected candidate's description.
+   - Return valid JSON only.
+
+Output strict JSON:
 {{
-  "analysis": "2-3 sentences max: what behavior, which tactic, why these IDs",
-  "prediction": ["T1071.001", "T1105"]
+  "analysis": "Step 1: Analyzed text intent (Dev vs Usage). Step 2: Checked Candidate Txxxx... Match found/Not found, defaulting to parent Txxxx.",
+  "prediction": ["Txxxx"] 
 }}
 """

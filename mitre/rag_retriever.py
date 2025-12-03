@@ -48,20 +48,20 @@ class RAGRetriever:
         # Extract embeddings (CLS token representation)
         q_emb =outputs.hidden_states[-1][:, 0, :].cpu().numpy()[0]
 
-        dense_candidates = self.kb.dense_search(q_emb, top_k=50)
+        dense_candidates = self.kb.dense_search(q_emb, top_k=TOP_K_EMBED)
 
         # 2. 关键词增强 (Keyword Boosting)
         boosted_candidates = self._keyword_boost(text, dense_candidates)
 
         # 3. 截取前 20 个给 Reranker (省钱/省时间)
-        top_n_for_rerank = boosted_candidates[:20]
+        top_n_for_rerank = boosted_candidates[:(TOP_K_RERANK*2)]
 
         # 4. Cross-Encoder 重排 (Reranking)
         reranked = self.kb.rerank(text, top_n_for_rerank)
 
         # 5. 最终取 Top 10 返回 (给 LLM 更多选择)
-        final_results = reranked[:10]  # 这里一定要给够 10 个！
-
+        final_results = reranked[:TOP_K_RERANK]  # 这里一定要给够 10 个！
+        #final_results =top_n_for_rerank [:TOP_K_RERANK]  # 这里一定要给够 10 个！
         result = []
         for tid, score in final_results:
             info = self.kb.techniques[tid]

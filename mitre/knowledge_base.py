@@ -64,12 +64,25 @@ class MITREKnowledgeBase:
         corpus = []
         self.tech_ids = []
         for tid, info in self.techniques.items():
-            # Prepare the text for encoding
+            # 获取父技术ID和信息（假设 _load 已经完成了 Tactic 继承）
+            parent_id = tid.split('.')[0]
+
+            parent_context = ""
+            # 如果是子技术，增加父技术的名称和描述作为上下文
+            if tid != parent_id and parent_id in self.techniques:
+                parent_info = self.techniques[parent_id]
+                parent_context = (
+                    f"PARENT: {parent_info['name']} ({parent_id}). "
+                    f"Parent Tactics: {', '.join(parent_info.get('tactics', []))}. "
+                )
+
+            # 最终用于编码的文本 (T1070.007 的向量现在包含了 T1070 的信息)
             text = (
+                f"{parent_context}"
                 f"Technique ID: {tid}. "
                 f"Name: {info['name']}. "
                 f"Description: {info['description']}. "
-                f"Tactics: {', '.join(info['tactics'])}. "
+                f"Tactics: {', '.join(info.get('tactics', []))}. "
             )
             corpus.append(text)
             self.tech_ids.append(tid)

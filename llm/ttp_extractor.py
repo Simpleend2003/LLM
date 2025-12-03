@@ -1,6 +1,8 @@
 # llm/ttp_extractor.py
 
 import json
+
+from config import TOP_K_RERANK
 from .llm_client import LLMClient
 from .prompts import ttp_mapping_cot_prompt
 from mitre.rag_retriever import RAGRetriever
@@ -15,7 +17,7 @@ class TTPExtractor:
     def extract(self, text: str):
         # Step 1: Retrieve - 增加 Top K 到 10，防止漏召回
         # 注意：这需要 config.py 中的 TOP_K_RERANK 至少为 10，否则这里取不到 10 个
-        candidates_raw = self.retriever.retrieve(text)[:10]
+        candidates_raw = self.retriever.retrieve(text)[:TOP_K_RERANK]
 
         # Step 2: Format with Ranking
         candidates_str = ""
@@ -24,9 +26,12 @@ class TTPExtractor:
             candidates_str += f"--- [Rank {rank}] ---\n"
             candidates_str += f"ID: {c['technique_id']}\n"
             candidates_str += f"Name: {c['name']}\n"
+            tactics = c['tactics']
+            candidates_str += f"tactics: {tactics}\n\n"
             # 描述保持压缩，防止 10 个候选项撑爆 Prompt 上下文
-            desc = c['description'][:150].replace("\n", " ") + "..."
+            desc = c['description'][:100].replace("\n", " ") + "..."
             candidates_str += f"Description: {desc}\n\n"
+
 
         # Step 3: Call LLM
         map_prompt = ttp_mapping_cot_prompt(
