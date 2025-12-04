@@ -73,7 +73,7 @@ def main():
     print((full+semi)/all)
     out_df = pd.DataFrame(results)
     out_df.to_csv(
-        "output01.csv",
+        "output_1.csv",
         index=False,
         encoding="utf-8-sig",
         # 强制对所有字段（包括数字和字符串）使用引号包裹

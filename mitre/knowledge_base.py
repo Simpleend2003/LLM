@@ -47,7 +47,11 @@ class MITREKnowledgeBase:
         """Loads the MITRE knowledge base from a JSON file."""
         with open(MITRE_KNOWLEDGE_BASE, "r", encoding="utf-8") as f:
             data = json.load(f)
-        self.techniques = data["techniques"]
+       # self.techniques = data["techniques"]
+        self.techniques = {
+            tid: info for tid, info in data["techniques"].items()
+            if not tid.startswith("T0")  # 简单粗暴过滤 T0 开头的 ICS ID
+        }
 
     def _embed(self):
         """Embeds the MITRE techniques using the model."""
